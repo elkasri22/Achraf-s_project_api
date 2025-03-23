@@ -3,29 +3,20 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const User = require("../Models/users.model");
 const ApiError = require("../utils/ApiError");
-const path = require("path");
-const fs = require("fs");
-const { cloudinaryUploadImage, cloudinaryDeleteImage } = require("../utils/cloudinary");
-const { generateReferralCode } = require("../utils/generateReferralCode");
 const sanitize = require("../utils/sanitizeData/Auth/sanitize");
-const { v4: uuidv4 } = require("uuid");
-const Level = require("../Models/levels.model");
 const SendEmailMessage = require("../utils/sendEmailMessage");
-const MakeVideo = require("../Models/makeVideos.model");
-const WithdrawTheBalance = require("../Models/withdrawTheBalance");
+const uuidv4 = require("uuid").v4;
 
 /**
  * @desc REGISTER
- * @route /api/v1/register
+ * @route /api/v1/auth/register
  * @method POST
  * @access public
  */
 exports.register = asyncHandler(async (req, res, next) => {
-  let { username, email, country, password, referredBy } = req.body;
+  let { email, password } = req.body;
 
-  const check_user = await User.findOne({
-    $or: [{ email: email }, { username: username }],
-  });
+  const check_user = await User.findOne({email});
 
   if (check_user) {
     return next(
@@ -34,160 +25,77 @@ exports.register = asyncHandler(async (req, res, next) => {
         "User already exists choose another username or email!!"
       )
     );
-  }
-
-  let new_user = {
-    username,
-    email,
-    country,
   };
 
-  if (req.file) {
-    const imagePath =
-      path.join(__dirname, "../uploads", req.file.filename) || null;
+  const salt = bcrypt.genSaltSync(10);
+  const hash = bcrypt.hashSync(password, salt);
 
-    const result = await cloudinaryUploadImage(imagePath);
+  password = hash;
 
-    new_user.avatar = {
-      url: result.secure_url,
-      public_id: result.public_id,
-    };
-
-    await fs.unlinkSync(imagePath);
-  }
-
-  let user_referrer = {};
-
-  if (referredBy) {
-    user_referrer = await User.findOne({ myReferralCode: referredBy });
-
-    if (!user_referrer) {
-      return next(new ApiError(400, "Referrer does not exist!!"));
-    }
-
-    new_user.referredBy = referredBy;
-  }
-
-  // Generate referral code for each user
-  new_user.myReferralCode = await generateReferralCode();
-
-  const salt = await bcrypt.genSalt(10);
-  const hashedPassword = await bcrypt.hash(password, salt);
-  new_user.password = hashedPassword;
-
-  let user = await new User({
-    ...new_user,
+  const user = await new User({
+    email,
+    password,
   });
 
   await user.save();
 
-  if (referredBy) {
-    user_referrer.countRegisteredWithMe += 1;
-    user_referrer.registeredWithMe.push(user._id);
-    user_referrer.score.level.points += +process.env.PLUS_LEVEL_POINTS;
-    user_referrer.hideLevelPoints += +process.env.PLUS_LEVEL_POINTS;
-    await user_referrer.save();
-  }
-
   const token = jwt.sign(
-    { id: user._id, isOnline: user.isOnline },
-    process.env.SECRET_AUTH,
+    { id: user._id },
+        process.env.SECRET_AUTH,
     {
       expiresIn: process.env.JWT_EXPIRE_TIME,
     }
   );
 
-  const data = await sanitize.sanitizeRegister(user);
-
-  res.status(201).json({ status: "success", data, token });
+  res.status(201).json({ status: "success", data: {
+    user,
+  }, token });
 });
 
 /**
  * @desc LOGIN
- * @route /api/v1/login
+ * @route /api/v1/auth/login
  * @method POST
  * @access public
  */
 exports.login = asyncHandler(async (req, res, next) => {
-  let { username, password } = req.body;
-
-  let check_user = await User.findOne({ username });
-
-  if (!check_user) {
-    return next(new ApiError(401, "Invalid username or password!!"));
-  }
-
-  const isMatch = await bcrypt.compare(password, check_user.password);
-
-  if (!isMatch) {
-    return next(new ApiError(401, "Invalid username or password!!"));
-  }
-
-  check_user.isOnline = true;
-  check_user.lastLogin = new Date();
-  if (!check_user.lastTap) {
-    check_user.lastTap = new Date();
-  }
-
-  const ids = await check_user?.registeredWithMe;
-
-  const myReferredUsers = await User.find({ _id: { $in: ids } });
-  const countMyRewardClaimed = myReferredUsers.filter(
-    (user) => user.score.AccountBalance.countMyRewardClaimed > 0
-  ).length;
-
-  check_user.rewardClaimedWithMe = countMyRewardClaimed;
-
-  const pointsUser = check_user?.score?.level?.points;
-
-  // Find the level that the user has and return it
-  const level = await Level.findOne({ min: { $lte: pointsUser } }).sort({
-    min: -1,
-  });
-  check_user.score.level.image = level?.image?.url;
-  check_user.score.level.name = level?.name;
-  check_user.score.level.plus = level?.plus;
-
-  await check_user.save();
-
-  const user = await sanitize.sanitizeLogin(check_user);
-
-  const token = jwt.sign(
-    { id: check_user._id, isOnline: check_user.isOnline },
-    process.env.SECRET_AUTH,
-    {
-      expiresIn: process.env.JWT_EXPIRE_TIME,
+  let { email, password } = req.body;
+  
+    // return user._id and email and role 
+    const user = await User.findOne({ email }).select("-createdAt -updatedAt -__v");
+  
+    if (!user) {
+      return next(new ApiError(404, "User does not exist!!"));
+    };
+  
+    const verifyPassword = await bcrypt.compare(password, user.password);
+  
+    if (!verifyPassword) {
+      return next(new ApiError(401, "Incorrect email or password!!"));
     }
-  );
-
-  res.status(200).json({ 
-    status: "success", 
-    data: {user},
-    token,
-  });
-});
-
-/**
- * @desc LOGOUT
- * @route /api/v1/logout
- * @method POST
- * @access private
- */
-exports.logout = asyncHandler(async (req, res, next) => {
-  const currentUser = req.user;
-
-  currentUser.isOnline = false;
-
-  await currentUser.save();
-
-  res
-    .status(200)
-    .json({ status: "success", message: "Logged out successfully" });
+  
+    const token = jwt.sign(
+      { id: user._id },
+        process.env.SECRET_AUTH,
+      {
+        expiresIn: process.env.JWT_EXPIRE_TIME,
+      }
+    );
+  
+    const res_user = await sanitize.sanitizeLogin(user);
+  
+    res.status(200).json({ 
+      status: "success", 
+      data: {
+        user: res_user
+      },
+      token,
+    });
 });
 
 /**
  * @desc SEND OTP
- * @route /api/v1/get-otp
+ * @route /api/v1/auth/get-otp
  * @method POST
  * @access public
  */
@@ -273,7 +181,7 @@ exports.sendOtp = asyncHandler(async (req, res, next) => {
                       font-weight: 500;
                     "
                   >
-                    Hey ${user.username},
+                    Hey ${user.email},
                   </p>
                   <p
                     style="
@@ -324,7 +232,7 @@ exports.sendOtp = asyncHandler(async (req, res, next) => {
 
 /**
  * @desc VERIFY OTP
- * @route /api/v1/verify-otp
+ * @route /api/v1/auth/verify-otp
  * @method POST
  * @access public
  */
@@ -391,26 +299,9 @@ exports.me = asyncHandler(async (req, res, next) => {
 
   const user = await User.findById(id);
 
-  const ids = await user?.registeredWithMe;
-
-  const myReferredUsers = await User.find({ _id: { $in: ids } });
-  const countMyRewardClaimed = myReferredUsers.filter(
-    (user) => user.score.AccountBalance.countMyRewardClaimed > 0
-  ).length;
-
-  user.rewardClaimedWithMe = countMyRewardClaimed;
-
-  const pointsUser = user?.score?.level?.points;
-
-  // Find the level that the user has and return it
-  const level = await Level.findOne({ min: { $lte: pointsUser } }).sort({
-    min: -1,
-  });
-  user.score.level.image = level?.image?.url;
-  user.score.level.name = level?.name;
-  user.score.level.plus = level?.plus;
-
-  await user.save();
+  if (!user) {
+    return next(new ApiError(404, "User does not exist!!"));
+  }
 
   const data = await sanitize.sanitizeLogin(user);
 
@@ -425,7 +316,8 @@ exports.me = asyncHandler(async (req, res, next) => {
  */
 exports.editProfile = asyncHandler(async (req, res, next) => {
   const { id } = req.user;
-  let { username, email, country, password } = req.body;
+
+  let { email, password } = req.body;
 
   const check_user = await User.findOne({_id: id});
 
@@ -438,7 +330,7 @@ exports.editProfile = asyncHandler(async (req, res, next) => {
     );
   };
 
-  if(!req.file && !username && !email && !country && !password){
+  if(!email && !password){
     return next(
       new ApiError(
         400,
@@ -449,36 +341,12 @@ exports.editProfile = asyncHandler(async (req, res, next) => {
 
   let new_user = {};
 
-  if (req.file) {
-    const public_id = check_user?.avatar?.public_id;
-
-    if (public_id) {
-      await cloudinaryDeleteImage(public_id);
-    }
-
-    const imagePath =
-      path.join(__dirname, "../uploads", req.file.filename) || null;
-
-    const result = await cloudinaryUploadImage(imagePath);
-
-    new_user.avatar = {
-      url: result.secure_url,
-      public_id: result.public_id,
-    };
-
-    await fs.unlinkSync(imagePath);
-  }
-
-  if(username) new_user.username = username;
   if(email) new_user.email = email;
-  if(country) new_user.country = country;
 
   if(password){
-
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
     new_user.password = hashedPassword;
-  
   };
 
   await User.findByIdAndUpdate(id, new_user, {
@@ -487,64 +355,4 @@ exports.editProfile = asyncHandler(async (req, res, next) => {
   });
 
   res.status(200).json({ status: "success", message: "User updated successfully" });
-});
-
-/**
- * @desc DELETE AN ACCOUNT
- * @route /api/v1/auth/me/delete-my-account
- * @method DELETE
- * @access private
- */
-exports.deleteAnAccount = asyncHandler(async (req, res, next) => {
-  const { id } = req.user;
-
-  const check_user = await User.findOne({_id: id});
-
-  if (!check_user) {
-    return next(
-      new ApiError(
-        400,
-        "User isn't exist!!"
-      )
-    );
-  };
-
-  const public_id = check_user?.avatar?.public_id;
-
-  if (public_id) {
-    await cloudinaryDeleteImage(public_id);
-  };
-
-  await MakeVideo.updateMany({ user_id: id }, { $set: { user_id: null } });
-
-  await WithdrawTheBalance.updateMany({ user_id: id }, { $set: { user_id: null } });
-
-  await User.findByIdAndDelete(id);
-
-  res.status(200).json({ status: "success", message: "User deleted successfully" });
-});
-
-/**
- * @desc GET ONE USER
- * @route /api/v1/auth/users/:id
- * @method GET
- * @access private
- */
-exports.getOneUser = asyncHandler(async (req, res, next) => {
-  const { id } = req.params;
-
-  const check_user = await User.findOne({_id: id});
-
-  if (!check_user) {
-    return next(
-      new ApiError(
-        400,
-        "User isn't exist!!"
-      )
-    );
-  };
-
-  const data = await sanitize.sanitizeLogin(check_user);
-
-  res.status(200).json({ status: "success", data });
 });

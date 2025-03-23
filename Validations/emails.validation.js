@@ -1,16 +1,14 @@
 const joi = require("joi");
-joi.objectId = require("joi-objectid")(joi);
 const asyncHandler = require("express-async-handler");
 const ApiError = require("../utils/ApiError");
 
-exports.MongoIdValidation = asyncHandler(async (req, res, next) => {
+exports.createEmailValidation = asyncHandler(async (req, res, next) => {
     const schema = joi.object({
-        id: joi.objectId().required(),
+        url: joi.string().uri().trim().required(),
+        email: joi.string().trim().email().required(),
     });
 
-    const { id } = req.params;
-
-    const { error } = schema.validate({ id });
+    const { error } = schema.validate(req.body);
 
     if (error) {
         return next(new ApiError(400, error.details[0].message));

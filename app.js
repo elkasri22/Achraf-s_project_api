@@ -12,20 +12,32 @@ const bodyParser = require("body-parser");
 const hpp = require("hpp");
 const mongoSanitize = require("express-mongo-sanitize");
 const MountRoutes = require("./Routes/main");
-const compression = require('compression');
+const middlewareCryptData = require("./Middlewares/middlewareCryptData");
+const compression = require("compression");
 
 //* Apply dotenv
 require("dotenv").config();
 
-const task = require("./Tasks/tasks");
+//* Apply Tasks
+const tasks = require("./Tasks/tasks");
 
 //* Apply Connect Database
 connectDB();
 
-app.use(compression()); // Enable compression
+app.use(
+    compression({
+        filter: (req, res) => {
+            if (req.headers["x-no-compression"]) {
+                return false;
+            }
+            return compression.filter(req, res);
+        },
+        threshold: 1024, // ضغط الاستجابات التي يزيد حجمها عن 1 كيلوبايت
+        level: 6, // مستوى الضغط (من 1 إلى 9، حيث 9 هو الأفضل)
+        memLevel: 8, // مستوى الذاكرة المستخدمة للضغط (من 1 إلى 9)
+    })
+);
 
-//* Apply Middleware Multer
-app.use(express.static("uploads"));
 app.use(express.urlencoded({ extended: true }));
 
 //* Apply Middleware express json with specific larger to uploaded
@@ -39,7 +51,12 @@ app.use(cookieParser());
 app.use(helmet());
 
 //* Apply Middleware cors
-app.use(cors({}));
+app.use(
+    cors({
+        origin: "*",
+        // origin: ["https://apkw.site", "http://localhost:3000"],
+    })
+);
 
 // * Middleware to protect against HTTP Parameter Pollution attacks
 app.use(hpp());
@@ -54,10 +71,10 @@ app.use("/api", rate_limit);
 app.use(xss);
 
 //* Apply middleware tasks
-task.checkLastTapAndLoginUser.start();
-task.sendEveryDayNotification.start();
-task.RemoveAllOtpUserAfter5Minutes.start();
-task.ResetTapHereEveryDay.start();
+tasks.RemoveAllOtpUserAfter5Minutes.start();
+
+//* Apply middleware middlewareCryptData
+app.use(middlewareCryptData);
 
 //* Apply routes
 MountRoutes(app);

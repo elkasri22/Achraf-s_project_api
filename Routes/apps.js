@@ -1,15 +1,11 @@
 const express = require("express");
 const router = express.Router();
-const uploads = require("../Middlewares/uploads");
 const { verifyTokenJwt } = require("../Middlewares/auth/verifyTokenJwt");
-const levels = require("../Controllers/levels.controller");
+const apps = require("../Controllers/apps.controller");
 const allowTo = require("../Middlewares/auth/allowTo");
 const csrf = require("../Middlewares/csrf");
-const {
-    CreateLevelValidation,
-    UpdateLevelValidation,
-} = require("../Validations/levels.validation");
 const { MongoIdValidation } = require("../Validations/global");
+const { CreateAppValidation, UpdateAppValidation } = require("../Validations/apps.validation");
 
 router
     .route("/")
@@ -17,11 +13,9 @@ router
         verifyTokenJwt,
         csrf.verifyToken,
         allowTo("admin"),
-        uploads.single("image"),
-        CreateLevelValidation,
-        levels.create
-    )
-    .get(verifyTokenJwt, levels.gets);
+        CreateAppValidation,
+        apps.create
+    ).get(apps.gets);
 
 router
     .route("/:id")
@@ -29,17 +23,17 @@ router
         verifyTokenJwt,
         csrf.verifyToken,
         allowTo("admin"),
-        uploads.single("image"),
-        UpdateLevelValidation,
-        levels.update
-    )
-    .get(verifyTokenJwt, MongoIdValidation, levels.getOne)
-    .delete(
+        UpdateAppValidation,
+        apps.update
+    ).get(
+        MongoIdValidation,
+        apps.getOne
+    ).delete(
         verifyTokenJwt,
         csrf.verifyToken,
         allowTo("admin"),
         MongoIdValidation,
-        levels.delete
+        apps.delete
     );
 
 module.exports = router;
