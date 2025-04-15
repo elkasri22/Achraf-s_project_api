@@ -10,7 +10,6 @@ const {
 } = require("../Validations/auth.validation");
 const auth = require("../Controllers/auth.controller");
 const { verifyTokenJwt } = require("../Middlewares/auth/verifyTokenJwt");
-const { MongoIdValidation } = require("../Validations/global");
 const csrf = require("../Middlewares/csrf");
 const allowTo = require("../Middlewares/auth/allowTo");
 

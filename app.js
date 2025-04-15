@@ -67,11 +67,11 @@ app.use(mongoSanitize());
 //* Middleware express rate limit to prevent from Dos or DDOS Attack
 app.use("/api", rate_limit);
 
-//* Apply middleware xss(cross site scripting)
-app.use(xss);
-
 //* Apply middleware tasks
 tasks.RemoveAllOtpUserAfter5Minutes.start();
+
+//* Apply middleware xss(cross site scripting)
+app.use(xss);
 
 //* Apply middleware middlewareCryptData
 app.use(middlewareCryptData);

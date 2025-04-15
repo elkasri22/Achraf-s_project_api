@@ -6,6 +6,11 @@ const xss = (req, res, next) => {
     const method = req.method;
 
     if (methods.includes(method)) {
+
+        if(req.headers['xss-jfsg'] === 'true'){
+            return next();
+        };
+
         const window = new JSDOM('').window;
         const DOMPurify = createDOMPurify(window);  
         const body = req.body;

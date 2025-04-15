@@ -9,7 +9,7 @@ const ApiError = require("../utils/ApiError");
  * @access private (admin)
  */
 exports.create = asyncHandler(async (req, res, next) => {
-    const { title, type, icon_app, bg_app, content, rating, size, download, developer, category, trending , slider, it, key } = req.body;
+    const { title, type, icon_app, bg_app, content, rating, size, download, developer, category, trending , slider, it, key, isFirst } = req.body;
 
     const checkApp = await App.findOne({ title });
 
@@ -35,8 +35,10 @@ exports.create = asyncHandler(async (req, res, next) => {
         supportedDevices,
     };
 
+    
     if (it) app.it = it;
     if (key) app.key = key;
+    if (isFirst) app.isFirst = isFirst;
 
     const saveApp = await new App({
         ...app
@@ -59,17 +61,19 @@ exports.create = asyncHandler(async (req, res, next) => {
 exports.gets = asyncHandler(async (req, res, next) => {
     let { page, limit, category } = req.query;
 
-    if (!page) page = 1;
-    if (!limit) limit = process.env.DEFAULT_LENGTH_ITEMS;
+    if (!page) page = "";
+    if (!limit) limit = "";
 
     const offset = (page - 1) * limit;
 
-    let data = await App.find().sort({ createdAt: -1})
+    // i want get the first app is has isFirst = true
+
+    let data = await App.find().sort({isFirst: -1, createdAt: -1})
         .skip(offset)
         .limit(limit)
         .select("-createdAt -updatedAt -__v");
 
-    let countDocuments = await App.find().sort({ createdAt: -1 }).countDocuments();
+    let countDocuments = await App.find().sort({isFirst: -1, createdAt: -1}).countDocuments();
 
     if(category){
         data = await App.find({category}).sort({ createdAt: -1})
@@ -77,7 +81,7 @@ exports.gets = asyncHandler(async (req, res, next) => {
             .limit(limit)
             .select("-createdAt -updatedAt -__v");
 
-        countDocuments = await App.find({category}).sort({ createdAt: -1 }).countDocuments();
+        countDocuments = await App.find({category}).sort({isFirst: -1, createdAt: -1}).countDocuments();
     }
 
     const result = data.length;

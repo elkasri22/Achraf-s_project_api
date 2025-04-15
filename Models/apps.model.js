@@ -74,6 +74,10 @@ const AppSchema = new mongoose.Schema(
             type: String,
             trim: true,
         },
+        isFirst: {
+            type: Boolean,
+            default: false
+        }
     },
     {
         timestamps: true,
