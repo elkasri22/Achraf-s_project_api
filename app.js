@@ -74,7 +74,7 @@ tasks.RemoveAllOtpUserAfter5Minutes.start();
 app.use(xss);
 
 //* Apply middleware middlewareCryptData
-app.use(middlewareCryptData);
+// app.use(middlewareCryptData); // TODO: When i complete i have to apply this middleware
 
 //* Apply routes
 MountRoutes(app);
