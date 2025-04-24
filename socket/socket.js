@@ -3,6 +3,7 @@ const socketIo = require('socket.io');
 const Match = require("../Models/matches.model");
 const cron = require('node-cron');
 const { encryptData } = require("../utils/cryptData");
+const moment = require('moment-timezone');
 
 module.exports = (server) => {
     const io = socketIo(server, {
@@ -56,17 +57,37 @@ module.exports = (server) => {
     // Improved updateMatchesToLive function to update matches to "live" status
     async function updateMatchesToLive() {
         const now = new Date();
-        const currentDate = now.toISOString().split('T')[0];
-        const currentTime = now.toTimeString().substring(0, 5);
+        const currentDateServer = now.toISOString().split('T')[0];
+        const currentTimeServer = now.toTimeString().substring(0, 5);
 
-        console.log(currentDate, currentTime);
+        function convertToCasablancaTime(dateTimeStr) {
+            const formattedDateTime = dateTimeStr.replace(':', 'T') + ':00';
+            const atlantaTime = moment.tz(formattedDateTime, 'America/New_York');
+
+            const casablancaTime = atlantaTime.clone().tz('Africa/Casablanca');
+
+            return casablancaTime.format('YYYY-MM-DD:HH:mm');
+        };
+
+        const currentDateWithTime = await convertToCasablancaTime(`${currentDateServer}:${currentTimeServer}`);
+
+        function extractDateTime(input) {
+            const [datePart, timePart] = input.split(':');
+
+            const minutesPart = input.split(':')[2];
+
+            return {
+                currentDate: datePart,          // "2025-04-24"
+                currentTime: `${timePart}:${minutesPart}`,
+            };
+        };
+
+        const { currentDate, currentTime } = extractDateTime(currentDateWithTime);
 
         // Update matches to "live" status if date and time are less than now instead of find
         const updateResult = await Match.updateMany(
             {
                 status: "upcoming",
-                // date: { $lte: currentDate },
-                // time: { $lte: currentTime }
                 $or: [
                     { date: { $lt: currentDate } },
                     { date: currentDate, time: { $lte: currentTime } }
@@ -108,7 +129,6 @@ module.exports = (server) => {
         }
 
         socket.on('disconnect', () => {
-            console.log(`Client disconnected: ${socket.id}`);
             connectedSockets.delete(socket.id);
         });
 
