@@ -16,7 +16,7 @@ const get = asyncHandler(async (req, res, next) => {
         const ads = await Ad.findOne({url, page, isActive: true});
 
         if (!ads) {
-            return next(new ApiError(404, "Ad not found or not active!!"));
+            return next(new ApiError(204, "Ad not found or not active!!"));
         };
         
         const data = await sanitize.sanitizeOne(ads);

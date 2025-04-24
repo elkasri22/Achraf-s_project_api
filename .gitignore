@@ -1,2 +1,7 @@
+
+#* Ignore this folder in uploading
 node_modules
-.env
+client
+
+#* Ignore this file in uploading
+# .env

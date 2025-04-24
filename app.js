@@ -18,6 +18,12 @@ const compression = require("compression");
 //* Apply dotenv
 require("dotenv").config();
 
+const http = require("http");
+
+const WebSockets = require("./socket/socket"); 
+
+const server_http = http.createServer(app);
+
 //* Apply Tasks
 const tasks = require("./Tasks/tasks");
 
@@ -32,9 +38,9 @@ app.use(
             }
             return compression.filter(req, res);
         },
-        threshold: 1024, // ضغط الاستجابات التي يزيد حجمها عن 1 كيلوبايت
-        level: 6, // مستوى الضغط (من 1 إلى 9، حيث 9 هو الأفضل)
-        memLevel: 8, // مستوى الذاكرة المستخدمة للضغط (من 1 إلى 9)
+        threshold: 1024,
+        level: 6, 
+        memLevel: 8,
     })
 );
 
@@ -51,6 +57,7 @@ app.use(cookieParser());
 app.use(helmet());
 
 //* Apply Middleware cors
+// TODO: I have to add cors to more secure
 app.use(
     cors({
         origin: "*",
@@ -74,12 +81,15 @@ tasks.RemoveAllOtpUserAfter5Minutes.start();
 app.use(xss);
 
 //* Apply middleware middlewareCryptData
-// app.use(middlewareCryptData); // TODO: When i complete i have to apply this middleware
+app.use(middlewareCryptData);
 
 //* Apply routes
 MountRoutes(app);
 
-const server = app.listen(process.env.PORT, () => {
+//* Apply WebSockets
+WebSockets(server_http);
+
+server_http.listen(process.env.PORT, () => {
     console.log(`Server is running on port ${process.env.PORT}`);
 });
 
@@ -87,4 +97,4 @@ const server = app.listen(process.env.PORT, () => {
 app.all("*", NotFound);
 app.use(ErrorHandler);
 
-ErrorOutSideExpress(server);
+ErrorOutSideExpress(server_http);

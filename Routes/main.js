@@ -13,7 +13,7 @@ const MountRoutes = (app) => {
     //* Routes for locker
     app.use(`${process.env.VERSION_API}/locker`, require("./locker"));
     //* Routes for bot
-    app.use(`${process.env.VERSION_API}/bot`, require("./bot"));
+    app.use(`${process.env.VERSION_API}/matches`, require("./matches"));
 };
 
 module.exports = MountRoutes;
