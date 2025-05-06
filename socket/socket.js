@@ -45,7 +45,7 @@ module.exports = (server) => {
             });
 
             return sortedMatches;
-        }
+        };
 
         const data = await getSortedMatches();
 
@@ -56,45 +56,30 @@ module.exports = (server) => {
 
     // Improved updateMatchesToLive function to update matches to "live" status
     async function updateMatchesToLive() {
-        const now = new Date();
-        const currentDateServer = now.toISOString().split('T')[0];
-        const currentTimeServer = now.toTimeString().substring(0, 5);
 
-        function convertToCasablancaTime(dateTimeStr) {
-            const formattedDateTime = dateTimeStr.replace(':', 'T') + ':00';
-            const atlantaTime = moment.tz(formattedDateTime, 'America/New_York');
+        // 1. Get current date and time from the server
+        const nowServer = new Date();
 
-            const casablancaTime = atlantaTime.clone().tz('Africa/Casablanca');
+        // 2. Convert current date and time to Casablanca time
+        const casablancaTime = moment(nowServer).tz('Africa/Casablanca');
+        const currentDateCasablanca = casablancaTime.format('YYYY-MM-DD');
+        const currentTimeCasablanca = casablancaTime.format('HH:mm');
 
-            return casablancaTime.format('YYYY-MM-DD:HH:mm');
-        };
+        console.log("Current Casablanca Date:", currentDateCasablanca);
+        console.log("Current Casablanca Time:", currentTimeCasablanca);
 
-        const currentDateWithTime = await convertToCasablancaTime(`${currentDateServer}:${currentTimeServer}`);
-
-        function extractDateTime(input) {
-            const [datePart, timePart] = input.split(':');
-
-            const minutesPart = input.split(':')[2];
-
-            return {
-                currentDate: datePart,          // "2025-04-24"
-                currentTime: `${timePart}:${minutesPart}`,
-            };
-        };
-
-        const { currentDate, currentTime } = extractDateTime(currentDateWithTime);
-
-        // Update matches to "live" status if date and time are less than now instead of find
-        const updateResult = await Match.updateMany(
-            {
-                status: "upcoming",
-                $or: [
-                    { date: { $lt: currentDate } },
-                    { date: currentDate, time: { $lte: currentTime } }
-                ]
-            },
-            { $set: { status: 'live' } }
-        );
+        // 3. Get all matches that are "upcoming" and their date is less than or equal to the current date and their time is less than or equal to the current time
+        const updateResult = await Match.updateMany({
+            status: 'upcoming',
+            $or: [
+                {
+                    date: { $lt: currentDateCasablanca },
+                },
+                {
+                    date: currentDateCasablanca,
+                    time: { $lte: currentTimeCasablanca },
+                },
+            ]}, { $set: { status: 'live' } });
 
         // Get matches only if there are updates
         if (updateResult.modifiedCount > 0) {
