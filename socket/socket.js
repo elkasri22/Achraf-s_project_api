@@ -8,7 +8,8 @@ const moment = require('moment-timezone');
 module.exports = (server) => {
     const io = socketIo(server, {
         cors: {
-            origin: "*",
+            origin: "https://sportbn.com",
+        //    origin:"*"
             methods: ['GET', 'POST']
         }
     });
