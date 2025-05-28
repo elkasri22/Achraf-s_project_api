@@ -19,6 +19,7 @@ module.exports = (server) => {
     const sendMatches = asyncHandler(async (matches) => {
         try {
             const enCodedMatches = await encryptData(matches);
+            cachedMatches = matches;
             io.emit("matches", enCodedMatches);
             console.log(`Sent ${matches.data.length} matches to ${io.engine.clientsCount} connected clients.`);
         } catch (error) {
