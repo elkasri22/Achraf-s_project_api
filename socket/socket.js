@@ -9,32 +9,35 @@ module.exports = (server) => {
     const io = socketIo(server, {
         cors: {
             origin: "https://sportbn.com",
-        //    origin:"*"
             methods: ['GET', 'POST']
         }
     });
 
-    // لم نعد بحاجة إلى connectedSockets Map لأننا نرسل بثًا عامًا فقط
-    // const connectedSockets = new Map(); 
-
-    // متغير لتخزين المباريات المجلوبة مؤقتاً في الذاكرة
     let cachedMatches = { data: [] }; 
 
-    // Improved sendMatches function
+    // دالة لإرسال المباريات لجميع المستخدمين
     const sendMatches = asyncHandler(async (matches) => {
         try {
-            // Broadcast to all connected clients
             const enCodedMatches = await encryptData(matches);
             io.emit("matches", enCodedMatches);
             console.log(`Sent ${matches.data.length} matches to ${io.engine.clientsCount} connected clients.`);
-
         } catch (error) {
             console.error('Error sending matches:', error);
-            throw error; // Re-throw to handle in the route
+            throw error;
         }
     });
 
-    // دالة لجلب وفرز المباريات من قاعدة البيانات
+    // ✅ دالة جديدة لإرسال البيانات إلى Socket واحد فقط
+    const sendMatchesToOne = asyncHandler(async (socket, matches) => {
+        try {
+            const enCodedMatches = await encryptData(matches);
+            socket.emit("matches", enCodedMatches);
+            console.log(`Sent ${matches.data.length} matches to socket: ${socket.id}`);
+        } catch (error) {
+            console.error(`Error sending to one socket (${socket.id}):`, error);
+        }
+    });
+
     async function getSortedMatchesFromDB() {
         const matches = await Match.find().select("-createdAt -updatedAt -__v");
 
@@ -51,52 +54,38 @@ module.exports = (server) => {
         return { data: sortedMatches };
     };
 
-    // دالة GetAllMatches ستستخدم البيانات المخزنة مؤقتاً
     const GetAllMatches = asyncHandler(async () => {
-        // إذا كانت البيانات المخزنة مؤقتاً موجودة، أعدها
         if (cachedMatches && cachedMatches.data.length > 0) {
             return cachedMatches;
         }
-        // وإلا، قم بجلبها من قاعدة البيانات وتخزينها مؤقتاً
         const data = await getSortedMatchesFromDB();
-        cachedMatches = data; // تخزين البيانات بعد جلبها
+        cachedMatches = data;
         return data;
     });
 
-    // Improved updateMatchesToLive function to update matches to "live" status
     async function updateMatchesToLive() {
-        // 1. Get current date and time from the server
         const nowServer = new Date();
-
-        // 2. Convert current date and time to Casablanca time
         const casablancaTime = moment(nowServer).tz('Africa/Casablanca');
         const currentDateCasablanca = casablancaTime.format('YYYY-MM-DD');
         const currentTimeCasablanca = casablancaTime.format('HH:mm');
 
-        // 3. Get all matches that are "upcoming" and their date is less than or equal to the current date and their time is less than or equal to the current time
         const updateResult = await Match.updateMany({
             status: 'upcoming',
             $or: [
-                {
-                    date: { $lt: currentDateCasablanca },
-                },
-                {
-                    date: currentDateCasablanca,
-                    time: { $lte: currentTimeCasablanca },
-                },
-            ]}, { $set: { status: 'live' } });
+                { date: { $lt: currentDateCasablanca } },
+                { date: currentDateCasablanca, time: { $lte: currentTimeCasablanca } },
+            ]
+        }, { $set: { status: 'live' } });
 
-        // Get matches only if there are updates
         if (updateResult.modifiedCount > 0) {
             console.log(`Updated ${updateResult.modifiedCount} matches to 'live' status.`);
-            const matches = await getSortedMatchesFromDB(); // جلب المباريات المحدثة من DB
-            cachedMatches = matches; // تحديث الذاكرة المؤقتة
+            const matches = await getSortedMatchesFromDB();
+            cachedMatches = matches;
             return matches;
         }
-        return null; // لا توجد تحديثات
+        return null;
     };
 
-    // Update matches every minute outside the socket
     cron.schedule('* * * * *', async () => {
         try {
             console.log('Running cron job: Checking for live matches and sending updates...');
@@ -111,7 +100,6 @@ module.exports = (server) => {
         }
     });
 
-    // تشغيل جلب المباريات وتخزينها مؤقتاً عند بدء السيرفر لأول مرة
     (async () => {
         try {
             console.log("Fetching initial matches for caching...");
@@ -124,21 +112,16 @@ module.exports = (server) => {
 
     io.on('connection', async (socket) => {
         console.log(`Client connected: ${socket.id}. Total clients: ${io.engine.clientsCount}`);
-        // لم نعد بحاجة لتخزين الـ socket في Map
-        // connectedSockets.set(socket.id, socket); 
 
-        // عند اتصال عميل جديد، أرسل له المباريات المخزنة مؤقتاً مباشرة
         if (cachedMatches && cachedMatches.data.length > 0) {
-            await sendMatches(cachedMatches);
+            await sendMatchesToOne(socket, cachedMatches); // ✅ استخدام الدالة الجديدة هنا
         } else {
             const matches = await getSortedMatchesFromDB();
-            cachedMatches = matches; 
-            await sendMatches(matches);
+            cachedMatches = matches;
+            await sendMatchesToOne(socket, matches);
         }
 
         socket.on('disconnect', () => {
-            // لم نعد بحاجة لحذف من Map
-            // connectedSockets.delete(socket.id); 
             console.log(`Client disconnected: ${socket.id}. Total clients: ${io.engine.clientsCount}`);
         });
 
@@ -147,6 +130,6 @@ module.exports = (server) => {
         });
     });
 
-    // Return both io and sendMatches for external use
+    // تصدير sendMatches أيضاً إن أردت استخدامه خارج الملف
     module.exports.sendMatches = sendMatches;
 };
